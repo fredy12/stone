@@ -125,7 +125,7 @@ func SetSubtree(dir string, qid uint32) (uint32, error) {
 	return id, err
 }
 
-func SetDiskQuota(dir string, size string, quotaId int) error {
+func SetDiskQuota(dir string, size string, quotaId uint32) error {
 	if !UseQuota {
 		return nil
 	}
@@ -145,6 +145,14 @@ func SetDiskQuota(dir string, size string, quotaId int) error {
 
 	limit := toByteSize(size)
 	return setUserQuota(id, limit, mountPoint)
+}
+
+func RemoveDiskQuota(dir string, quotaId uint32) error {
+	if !UseQuota {
+		return nil
+	}
+
+	return unsetUserQuota(quotaId)
 }
 
 func GetDevId(dir string) (uint64, error) {
@@ -195,6 +203,12 @@ func doCmd(name string, args ...string) (string, error) {
 		logrus.Infof("cmd: [%s %s]", name, strings.Join(args, " "))
 	}
 	return string(output), err
+}
+
+func unsetUserQuota(quotaId uint32) error {
+	uid := strconv.FormatUint(uint64(quotaId), 10)
+	_, err := doCmd("setquota", "-g", uid, "0", "0", "0", "0", "-a")
+	return err
 }
 
 func setUserQuota(quotaId uint32, diskQuota uint64, mountPoint string) error {

@@ -1,15 +1,11 @@
 package local_volume
 
 import (
-	"encoding/json"
-	"errors"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/zanecloud/stone/stone_plugin/tools"
 )
 
@@ -19,9 +15,9 @@ const (
 	VolumeDataPathName = "_data"
 )
 
-// localVolume implements the Volume interface from the volume package and
+// LocalVolume implements the Volume interface from the volume package and
 // represents the volumes created by Root.
-type localVolume struct {
+type LocalVolume struct {
 	m sync.Mutex
 	// unique name of the volume
 	Name string
@@ -41,6 +37,8 @@ type localVolume struct {
 	IoClass int64
 	// exclusive
 	Exclusive bool
+	// quotaId
+	QuotaId uint32
 	// active refcounts the active mounts
 	Active activeMount
 }
@@ -50,9 +48,9 @@ type activeMount struct {
 	Mounted bool
 }
 
-func New(driverName, volumeName string, size int64, ioClass int64, isExclusive bool, diskInfo *tools.DiskInfo) (*localVolume, error) {
+func New(driverName, volumeName string, size int64, ioClass int64, isExclusive bool, diskInfo *tools.DiskInfo) (*LocalVolume, error) {
 	var err error
-	v := &localVolume{
+	v := &LocalVolume{
 		Name:       volumeName,
 		DriverName: driverName,
 		VolumeType: VolumeType,
@@ -82,8 +80,9 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	if err != nil {
 		return nil, err
 	}
+	v.QuotaId = quotaId
 
-	err = tools.SetDiskQuota(v.DataPath, sizeStr+"B", int(quotaId))
+	err = tools.SetDiskQuota(v.DataPath, sizeStr+"B", quotaId)
 	if err != nil {
 		return nil, err
 	}
@@ -96,22 +95,18 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	return v, nil
 }
 
-func Remove(volumePath string) error {
-	realPath, err := filepath.EvalSymlinks(volumePath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-		realPath = filepath.Dir(volumePath)
-	}
+func Remove(vol *LocalVolume) error {
+	// remove disk quota
+	tools.RemoveDiskQuota(vol.DataPath, vol.QuotaId)
 
-	if err := tools.RemovePath(realPath); err != nil {
+	// remove path
+	if err := tools.RemovePath(vol.VolumePath); err != nil {
 		return err
 	}
-	return tools.RemovePath(filepath.Dir(volumePath))
+	return nil
 }
 
-func Restore(volumePath string) (*localVolume, error) {
+func Restore(volumePath string) (*LocalVolume, error) {
 	v, err := fromDisk(volumePath)
 	if err != nil {
 		return nil, err
@@ -120,50 +115,50 @@ func Restore(volumePath string) (*localVolume, error) {
 }
 
 // Name returns the name of the given Volume.
-func (v *localVolume) GetName() string {
+func (v *LocalVolume) GetName() string {
 	return v.Name
 }
 
 // DriverName returns the driver that created the given Volume.
-func (v *localVolume) GetDriverName() string {
+func (v *LocalVolume) GetDriverName() string {
 	return v.DriverName
 }
 
 // Path returns the data location.
-func (v *localVolume) GetPath() string {
+func (v *LocalVolume) GetPath() string {
 	return v.DataPath
 }
 
 // DataPath returns the constructed path of this volume.
-func (v *localVolume) GetVolumePath() string {
+func (v *LocalVolume) GetVolumePath() string {
 	return v.VolumePath
 }
 
 // DataPath returns the constructed path of this volume.
-func (v *localVolume) GetDataPath() string {
+func (v *LocalVolume) GetDataPath() string {
 	return v.DataPath
 }
 
 // DiskId returns the ID of diskInfo
-func (v *localVolume) GetDiskId() string {
+func (v *LocalVolume) GetDiskId() string {
 	return v.DiskId
 }
 
 // Size returns the size of volume
-func (v *localVolume) GetSize() int64 {
+func (v *LocalVolume) GetSize() int64 {
 	return v.Size
 }
 
-func (v *localVolume) GetIoClass() int64 {
+func (v *LocalVolume) GetIoClass() int64 {
 	return v.IoClass
 }
 
-func (v *localVolume) IsExclusive() bool {
+func (v *LocalVolume) IsExclusive() bool {
 	return v.Exclusive
 }
 
-// Mount implements the localVolume interface, returning the data location.
-func (v *localVolume) Mount() (string, error) {
+// Mount implements the LocalVolume interface, returning the data location.
+func (v *LocalVolume) Mount() (string, error) {
 	v.m.Lock()
 	defer v.m.Unlock()
 	if !v.Active.Mounted {
@@ -173,8 +168,8 @@ func (v *localVolume) Mount() (string, error) {
 	return v.DataPath, nil
 }
 
-// Umount is for satisfying the localVolume interface and does not do anything in this driver.
-func (v *localVolume) Unmount() error {
+// Umount is for satisfying the LocalVolume interface and does not do anything in this driver.
+func (v *LocalVolume) Unmount() error {
 	v.m.Lock()
 	defer v.m.Unlock()
 	v.Active.Count--
@@ -184,52 +179,6 @@ func (v *localVolume) Unmount() error {
 	return nil
 }
 
-func (v *localVolume) Status() map[string]interface{} {
-	return nil
-}
-
-func fromDisk(pth string) (*localVolume, error) {
-	filename := filepath.Join(pth, "volume.json")
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		return nil, errors.New("error restore from disk without volume.json")
-	}
-
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var obj localVolume
-	err = json.Unmarshal(data, &obj)
-	if err != nil {
-		logrus.Debugf("parse %s failure: %s", filename, err)
-		return nil, err
-	}
-	//if v.Name != obj.Name {
-	//	return fmt.Errorf("name error: %s != %s", v.Name, obj.Name)
-	//}
-	dataPath := filepath.Join(pth, VolumeDataPathName)
-	if _, err := os.Stat(dataPath); os.IsNotExist(err) {
-		return nil, errors.New("error restore from disk without _data path")
-	}
-
-	if obj.Name == "" || obj.VolumePath == "" || obj.DataPath == "" || obj.DiskId == "" {
-		return nil, errors.New("error restore from disk with wrong format data")
-	}
-	return &obj, nil
-}
-
-func (v *localVolume) toDisk(pth string) error {
-	v.m.Lock()
-	defer v.m.Unlock()
-
-	data, err := json.Marshal(&v)
-	if err != nil {
-		return err
-	}
-
-	if err = ioutil.WriteFile(filepath.Join(pth, "volume.json"), data, 0600); err != nil {
-		return err
-	}
+func (v *LocalVolume) Status() map[string]interface{} {
 	return nil
 }
