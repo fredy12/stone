@@ -6,20 +6,16 @@ import (
 )
 
 type Volume interface {
-	Name() string
-	DriverName() string
-	Path() string
-	VolumePath() string
-	DataPath() string
-	DiskId() string
-	Size() int64
-	IoClass() int64
+	GetName() string
+	GetPath() string
+	GetVolumePath() string
+	GetDiskId() string
+	GetSize() int64
+	GetIoClass() int64
 	IsExclusive() bool
 	Mount() (string, error)
 	Unmount() error
 	Status() map[string]interface{}
-	FromDisk(pth string) error
-	ToDisk(pth string) error
 }
 
 func New(driverName, volumeName string, size int64, ioClass int64, exclusive bool, diskInfo *tools.DiskInfo) (Volume, error) {
@@ -27,5 +23,9 @@ func New(driverName, volumeName string, size int64, ioClass int64, exclusive boo
 }
 
 func Remove(v Volume) error {
-	return local_volume.Remove(v.VolumePath())
+	return local_volume.Remove(v.GetVolumePath())
+}
+
+func Restore(volumePath string) (Volume, error) {
+	return local_volume.Restore(volumePath)
 }

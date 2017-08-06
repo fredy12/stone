@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/Sirupsen/logrus"
@@ -42,12 +45,56 @@ func assert(err error) {
 	}
 }
 
+func restoreVolumes(diskInfos []*tools.DiskInfo) (map[string]volume.Volume, error) {
+	const VolumeRootPathName = "stone_volume"
+
+	vols := map[string]volume.Volume{}
+	for _, diskInfo := range diskInfos {
+		rootPath := filepath.Join(diskInfo.MountPoint, VolumeRootPathName)
+		if _, err := os.Stat(rootPath); os.IsNotExist(err) {
+			continue
+		}
+
+		files, _ := ioutil.ReadDir(rootPath)
+		for _, fi := range files {
+			if fi.IsDir() {
+				volumePath := filepath.Join(rootPath, fi.Name())
+				v, err := volume.Restore(volumePath)
+				if err != nil {
+					return nil, err
+				}
+				vols[v.GetName()] = v
+			}
+		}
+	}
+	return vols, nil
+
+}
+
 func New() *stonePlugin {
 	diskInfos, err := tools.Collect()
 	if err != nil {
-		logrus.Panicf("error when do init stone plugin: %v", err)
+		logrus.Panicf("error when do init stone plugin with collect disks: %v", err)
 	}
+	diskJson, err := json.Marshal(&diskInfos)
+	if err != nil {
+		logrus.Panicf("error when do init stone plugin with json disks: %v", err)
+	}
+	logrus.Infof("Collected Disk Information: %s", string(diskJson))
+
+	// restore existed volumes
+	vols, err := restoreVolumes(diskInfos)
+	if err != nil {
+		logrus.Panicf("error when do init stone plugin with restore volumes: %v", err)
+	}
+	volumeJson, err := json.Marshal(&vols)
+	if err != nil {
+		logrus.Panicf("error when do init stone plugin with json volumes: %v", err)
+	}
+	logrus.Infof("Restore volumes Information: %s", string(volumeJson))
+
 	return &stonePlugin{
+		volumes:   vols,
 		diskInfos: diskInfos,
 	}
 }
@@ -68,7 +115,7 @@ func (s *stonePlugin) register(api *PluginAPI) {
 }
 
 func fmtError(err error, vol string) *string {
-	s := fmt.Sprintf("%v: %s", err, vol)
+	s := fmt.Sprintf("%v: with volume name %s", err, vol)
 	return &s
 }
 
@@ -150,6 +197,7 @@ func (s *stonePlugin) remove(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	delete(s.volumes, q.Name)
+	assert(json.NewEncoder(resp).Encode(r))
 }
 
 func (s *stonePlugin) mount(resp http.ResponseWriter, req *http.Request) {
@@ -172,7 +220,7 @@ func (s *stonePlugin) mount(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	m := v.DataPath()
+	m := v.GetPath()
 	r.Mountpoint = &m
 	assert(json.NewEncoder(resp).Encode(r))
 }
@@ -214,7 +262,7 @@ func (s *stonePlugin) path(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	m := v.DataPath()
+	m := v.GetPath()
 	r.Mountpoint = &m
 	assert(json.NewEncoder(resp).Encode(r))
 }
@@ -240,7 +288,7 @@ func (s *stonePlugin) get(resp http.ResponseWriter, req *http.Request) {
 
 	r.Volume = &Volume{
 		Name:       q.Name,
-		Mountpoint: v.DataPath(),
+		Mountpoint: v.GetPath(),
 	}
 
 	assert(json.NewEncoder(resp).Encode(r))
@@ -253,11 +301,12 @@ func (s *stonePlugin) list(resp http.ResponseWriter, req *http.Request) {
 		Volumes []*Volume
 		Err     *string
 	}
+	log.Println("Received list request")
 
 	for _, vol := range s.volumes {
 		r.Volumes = append(r.Volumes, &Volume{
-			Name:       vol.Name(),
-			Mountpoint: vol.DataPath(),
+			Name:       vol.GetName(),
+			Mountpoint: vol.GetPath(),
 		})
 	}
 	assert(json.NewEncoder(resp).Encode(r))

@@ -87,7 +87,6 @@ func (s *stonePlugin) setOpts(opts map[string]string) (*OptsConfig, error) {
 	}, nil
 }
 
-
 type scoredDisk struct {
 	*tools.DiskInfo
 	score int64
@@ -121,12 +120,12 @@ OUTER:
 		var existIoClass int64 = 0
 		// collect all volumes on this disk
 		for _, volume := range s.volumes {
-			if volume.DiskId() == diskInfo.Id {
+			if volume.GetDiskId() == diskInfo.Id {
 				if reqOpts.exclusive || volume.IsExclusive() {
 					continue OUTER
 				}
-				usedSize += volume.Size()
-				existIoClass += volume.IoClass()
+				usedSize += volume.GetSize()
+				existIoClass += volume.GetIoClass()
 			}
 		}
 
@@ -180,6 +179,9 @@ OUTER:
 			minScore = totalScore
 			selectedOne = candidate
 		}
+	}
+	if selectedOne == nil {
+		return nil, errors.New("sorry, no disk suit.")
 	}
 	return selectedOne, nil
 }

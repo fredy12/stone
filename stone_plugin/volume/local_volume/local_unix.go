@@ -9,7 +9,7 @@ import (
 )
 
 func (v *localVolume) allocateVolumeOnDisk() error {
-	path := v.DataPath()
+	path := v.GetPath()
 	rootUID, rootGID, err := idtools.GetRootUIDGID(nil, nil)
 	if err != nil {
 		return err

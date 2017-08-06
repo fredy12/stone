@@ -2,11 +2,12 @@ package tools
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"os/exec"
 	"strconv"
 	"strings"
 
-	"crypto/md5"
 	"github.com/Sirupsen/logrus"
 )
 
@@ -39,5 +40,5 @@ func RunShellInt(shell string) int {
 func Md5sum(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
-	return string(h.Sum(nil))
+	return hex.EncodeToString(h.Sum(nil))
 }

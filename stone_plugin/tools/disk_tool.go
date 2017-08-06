@@ -140,6 +140,7 @@ func Collect() ([]*DiskInfo, error) {
 		if err != nil {
 			return nil, err
 		}
+		diskType = strings.TrimSpace(diskType)
 		deviceFlag[device] = deviceFlagType[diskType]
 	}
 

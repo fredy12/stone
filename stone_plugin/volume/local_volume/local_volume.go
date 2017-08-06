@@ -2,7 +2,7 @@ package local_volume
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -24,47 +24,47 @@ const (
 type localVolume struct {
 	m sync.Mutex
 	// unique name of the volume
-	name string
+	Name string
 	// volumePath
-	volumePath string
+	VolumePath string
 	// dataPath is the path on the host where the data lives
-	dataPath string
+	DataPath string
 	// driverName is the name of the driver that created the volume.
-	driverName string
+	DriverName string
 	// volumeType is the type if the volume
-	volumeType string
+	VolumeType string
 	// diskId is the ID of diskInfo
-	diskId string
+	DiskId string
 	// size is the size of the volume
-	size int64
+	Size int64
 	// ioClass
-	ioClass int64
+	IoClass int64
 	// exclusive
-	exclusive bool
+	Exclusive bool
 	// active refcounts the active mounts
-	active activeMount
+	Active activeMount
 }
 
 type activeMount struct {
-	count   uint64
-	mounted bool
+	Count   uint64
+	Mounted bool
 }
 
 func New(driverName, volumeName string, size int64, ioClass int64, isExclusive bool, diskInfo *tools.DiskInfo) (*localVolume, error) {
 	var err error
 	v := &localVolume{
-		name:       volumeName,
-		driverName: driverName,
-		volumeType: VolumeType,
-		diskId:     diskInfo.Id,
-		size:       size,
-		ioClass:    ioClass,
-		exclusive:  isExclusive,
+		Name:       volumeName,
+		DriverName: driverName,
+		VolumeType: VolumeType,
+		DiskId:     diskInfo.Id,
+		Size:       size,
+		IoClass:    ioClass,
+		Exclusive:  isExclusive,
 	}
 
 	// set volume path and data path
-	v.volumePath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName)
-	v.dataPath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName, VolumeDataPathName)
+	v.VolumePath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName)
+	v.DataPath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName, VolumeDataPathName)
 
 	// allocate volume
 	if err = v.allocateVolumeOnDisk(); err != nil {
@@ -72,7 +72,7 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	}
 	defer func() {
 		if err != nil {
-			os.RemoveAll(filepath.Dir(v.volumePath))
+			os.RemoveAll(filepath.Dir(v.VolumePath))
 		}
 	}()
 
@@ -83,13 +83,13 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 		return nil, err
 	}
 
-	err = tools.SetDiskQuota(v.dataPath, sizeStr+"B", int(quotaId))
+	err = tools.SetDiskQuota(v.DataPath, sizeStr+"B", int(quotaId))
 	if err != nil {
 		return nil, err
 	}
 
 	// record volume to disk
-	if err = v.ToDisk(v.volumePath); err != nil {
+	if err = v.toDisk(v.VolumePath); err != nil {
 		return nil, err
 	}
 
@@ -111,67 +111,75 @@ func Remove(volumePath string) error {
 	return tools.RemovePath(filepath.Dir(volumePath))
 }
 
+func Restore(volumePath string) (*localVolume, error) {
+	v, err := fromDisk(volumePath)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // Name returns the name of the given Volume.
-func (v *localVolume) Name() string {
-	return v.name
+func (v *localVolume) GetName() string {
+	return v.Name
 }
 
 // DriverName returns the driver that created the given Volume.
-func (v *localVolume) DriverName() string {
-	return v.driverName
+func (v *localVolume) GetDriverName() string {
+	return v.DriverName
 }
 
 // Path returns the data location.
-func (v *localVolume) Path() string {
-	return v.dataPath
+func (v *localVolume) GetPath() string {
+	return v.DataPath
 }
 
 // DataPath returns the constructed path of this volume.
-func (v *localVolume) VolumePath() string {
-	return v.volumePath
+func (v *localVolume) GetVolumePath() string {
+	return v.VolumePath
 }
 
 // DataPath returns the constructed path of this volume.
-func (v *localVolume) DataPath() string {
-	return v.dataPath
+func (v *localVolume) GetDataPath() string {
+	return v.DataPath
 }
 
 // DiskId returns the ID of diskInfo
-func (v *localVolume) DiskId() string {
-	return v.diskId
+func (v *localVolume) GetDiskId() string {
+	return v.DiskId
 }
 
 // Size returns the size of volume
-func (v *localVolume) Size() int64 {
-	return v.size
+func (v *localVolume) GetSize() int64 {
+	return v.Size
 }
 
-func (v *localVolume) IoClass() int64 {
-	return v.ioClass
+func (v *localVolume) GetIoClass() int64 {
+	return v.IoClass
 }
 
 func (v *localVolume) IsExclusive() bool {
-	return v.exclusive
+	return v.Exclusive
 }
 
 // Mount implements the localVolume interface, returning the data location.
 func (v *localVolume) Mount() (string, error) {
 	v.m.Lock()
 	defer v.m.Unlock()
-	if !v.active.mounted {
-		v.active.mounted = true
+	if !v.Active.Mounted {
+		v.Active.Mounted = true
 	}
-	v.active.count++
-	return v.dataPath, nil
+	v.Active.Count++
+	return v.DataPath, nil
 }
 
 // Umount is for satisfying the localVolume interface and does not do anything in this driver.
 func (v *localVolume) Unmount() error {
 	v.m.Lock()
 	defer v.m.Unlock()
-	v.active.count--
-	if v.active.count == 0 {
-		v.active.mounted = false
+	v.Active.Count--
+	if v.Active.Count == 0 {
+		v.Active.Mounted = false
 	}
 	return nil
 }
@@ -180,35 +188,38 @@ func (v *localVolume) Status() map[string]interface{} {
 	return nil
 }
 
-func (v *localVolume) FromDisk(pth string) error {
-	filename := filepath.Join(filepath.Dir(pth), "volume.json")
-	_, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return nil
+func fromDisk(pth string) (*localVolume, error) {
+	filename := filepath.Join(pth, "volume.json")
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		return nil, errors.New("error restore from disk without volume.json")
 	}
-
-	v.m.Lock()
-	defer v.m.Unlock()
 
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var obj localVolume
 	err = json.Unmarshal(data, &obj)
 	if err != nil {
 		logrus.Debugf("parse %s failure: %s", filename, err)
-		return err
+		return nil, err
 	}
-	if v.name != obj.name {
-		return fmt.Errorf("name error: %s != %s", v.name, obj.name)
+	//if v.Name != obj.Name {
+	//	return fmt.Errorf("name error: %s != %s", v.Name, obj.Name)
+	//}
+	dataPath := filepath.Join(pth, VolumeDataPathName)
+	if _, err := os.Stat(dataPath); os.IsNotExist(err) {
+		return nil, errors.New("error restore from disk without _data path")
 	}
-	v = &obj
-	return nil
+
+	if obj.Name == "" || obj.VolumePath == "" || obj.DataPath == "" || obj.DiskId == "" {
+		return nil, errors.New("error restore from disk with wrong format data")
+	}
+	return &obj, nil
 }
 
-func (v *localVolume) ToDisk(pth string) error {
+func (v *localVolume) toDisk(pth string) error {
 	v.m.Lock()
 	defer v.m.Unlock()
 
@@ -217,7 +228,7 @@ func (v *localVolume) ToDisk(pth string) error {
 		return err
 	}
 
-	if err = ioutil.WriteFile(filepath.Join(filepath.Dir(pth), "volume.json"), data, 0600); err != nil {
+	if err = ioutil.WriteFile(filepath.Join(pth, "volume.json"), data, 0600); err != nil {
 		return err
 	}
 	return nil
