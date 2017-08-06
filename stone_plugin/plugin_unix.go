@@ -18,12 +18,12 @@ var ( // volumeNameRegex ensures the name assigned for the volume is valid.
 
 	oldVfsDir = filepath.Join("vfs", "dir")
 
-	validOpts = []string{
-		"fsType",
-		"mediaType",
-		"size",
-		"ioClass",
-		"exclusive",
+	validOpts = map[string]bool{
+		"fsType":    true,
+		"mediaType": true,
+		"size":      true,
+		"ioClass":   true,
+		"exclusive": true,
 	}
 )
 
@@ -51,13 +51,9 @@ func validateOpts(opts map[string]string) error {
 		return validationError{fmt.Errorf("opts is empty")}
 	}
 
-	for _, optKey := range validOpts {
-		if v, exist := opts[optKey]; !exist {
-			return validationError{fmt.Errorf("optKey %s is required", optKey)}
-		} else {
-			if v == "" {
-				return validationError{fmt.Errorf("optKey %s is empty", optKey)}
-			}
+	for optKey := range opts {
+		if _, exist := validOpts[optKey]; !exist {
+			return validationError{fmt.Errorf("optKey %s is invalid opt", optKey)}
 		}
 	}
 	return nil
