@@ -1,9 +1,10 @@
-package docker_disk
+package main
 
 import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Sirupsen/logrus"
 	"log"
 	"os"
 	"runtime"
@@ -73,13 +74,19 @@ func Run() {
 		os.Exit(2)
 	}
 
+	log.SetPrefix(os.Args[0] + os.Args[1] + " | ")
 	switch os.Args[1] {
 	case "list":
 		f1 := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 		f1.Usage = func() {
-			subCmdUsage("list", "", []map[string]string{})
+			subCmdUsage("list", "", []map[string]string{{"verbose": "Show verbose logs"}})
 		}
 		f1.Parse(os.Args[2:])
+		if len(os.Args) < 3 || os.Args[2] != "verbose" {
+			// not show verbose
+			logrus.SetLevel(logrus.PanicLevel)
+		}
+
 		diskInfo, err := Collect()
 		assert(err)
 		toJSON(diskInfo)

@@ -1,4 +1,4 @@
-package docker_disk
+package main
 
 /*
 
