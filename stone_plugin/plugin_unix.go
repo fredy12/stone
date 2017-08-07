@@ -3,12 +3,15 @@ package stone_plugin
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/docker/docker/utils"
 	"github.com/zanecloud/stone/stone_plugin/tools"
-	"sort"
+	"github.com/zanecloud/stone/stone_plugin/volume"
 )
 
 var ( // volumeNameRegex ensures the name assigned for the volume is valid.
@@ -37,6 +40,32 @@ type OptsConfig struct {
 	size      int64  // Byte
 	ioClass   int64  // ioClass: ssd(6-10), hdd(1-5)
 	exclusive bool
+}
+
+func restoreVolumes(diskInfos []*tools.DiskInfo) (map[string]volume.Volume, error) {
+	const VolumeRootPathName = "stone_volume"
+
+	vols := map[string]volume.Volume{}
+	for _, diskInfo := range diskInfos {
+		rootPath := filepath.Join(diskInfo.MountPoint, VolumeRootPathName)
+		if _, err := os.Stat(rootPath); os.IsNotExist(err) {
+			continue
+		}
+
+		files, _ := ioutil.ReadDir(rootPath)
+		for _, fi := range files {
+			if fi.IsDir() {
+				volumePath := filepath.Join(rootPath, fi.Name())
+				v, err := volume.Restore(volumePath)
+				if err != nil {
+					return nil, err
+				}
+				vols[v.GetName()] = v
+			}
+		}
+	}
+	return vols, nil
+
 }
 
 func (s *stonePlugin) validateName(name string) error {

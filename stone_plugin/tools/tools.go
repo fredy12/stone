@@ -1,15 +1,30 @@
 package tools
 
 import (
-	"bytes"
-	"crypto/md5"
-	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
 )
+
+func Collect() ([]*DiskInfo, error) {
+	var DiskCmd = "docker-disk"
+	args := []string{
+		"list",
+	}
+	out, err := exec.Command(DiskCmd, args...).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %q", err.Error(), out)
+	}
+	var diskInfoS []*DiskInfo
+	if err := json.Unmarshal(out, &diskInfoS); err != nil {
+		return nil, err
+	}
+	return diskInfoS, nil
+}
 
 func Command(name string, args ...string) (string, error) {
 	output, err := exec.Command(name, args...).CombinedOutput()
@@ -21,24 +36,12 @@ func Command(name string, args ...string) (string, error) {
 	return string(output), err
 }
 
-func RunShellInt(shell string) int {
-	out, err := exec.Command("/bin/sh", "-c", shell).Output()
-	if err != nil {
-		logrus.Error("RunShellInt %s failed: %v", shell, err)
-		return -1
+func RemovePath(path string) error {
+	if err := os.RemoveAll(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
-
-	n, err := strconv.Atoi(string(bytes.Trim(out, " \n\r\t ")))
-	if err != nil {
-		logrus.Error("RunShellInt %s failed: %v", shell, err)
-		return -1
-	}
-
-	return n
-}
-
-func Md5sum(s string) string {
-	h := md5.New()
-	h.Write([]byte(s))
-	return hex.EncodeToString(h.Sum(nil))
+	return nil
 }

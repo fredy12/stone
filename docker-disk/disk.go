@@ -1,4 +1,4 @@
-package tools
+package docker_disk
 
 /*
 
@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 
+	"crypto/md5"
+	"encoding/hex"
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -208,6 +210,38 @@ func Collect() ([]*DiskInfo, error) {
 	return diskInfos, nil
 }
 
+func Md5sum(s string) string {
+	h := md5.New()
+	h.Write([]byte(s))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func RunShellInt(shell string) int {
+	out, err := exec.Command("/bin/sh", "-c", shell).Output()
+	if err != nil {
+		log.Error("RunShellInt %s failed: %v", shell, err)
+		return -1
+	}
+
+	n, err := strconv.Atoi(string(bytes.Trim(out, " \n\r\t ")))
+	if err != nil {
+		log.Error("RunShellInt %s failed: %v", shell, err)
+		return -1
+	}
+
+	return n
+}
+
+func Command(name string, args ...string) (string, error) {
+	output, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		log.Warnf("cmd: [%s %s], output: %s err: %v", name, strings.Join(args, " "), string(output), err)
+	} else {
+		log.Infof("cmd: [%s %s]", name, strings.Join(args, " "))
+	}
+	return string(output), err
+}
+
 func skipMountedPath(mount string) bool {
 	mount = strings.TrimSpace(mount)
 
@@ -232,14 +266,4 @@ func skipFilesystem(fs string) bool {
 	}
 
 	return true
-}
-
-func RemovePath(path string) error {
-	if err := os.RemoveAll(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	return nil
 }

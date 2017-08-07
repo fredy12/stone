@@ -6,11 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/Sirupsen/logrus"
@@ -43,32 +40,6 @@ func assert(err error) {
 	if err != nil {
 		logrus.Errorf("Error: %v", err)
 	}
-}
-
-func restoreVolumes(diskInfos []*tools.DiskInfo) (map[string]volume.Volume, error) {
-	const VolumeRootPathName = "stone_volume"
-
-	vols := map[string]volume.Volume{}
-	for _, diskInfo := range diskInfos {
-		rootPath := filepath.Join(diskInfo.MountPoint, VolumeRootPathName)
-		if _, err := os.Stat(rootPath); os.IsNotExist(err) {
-			continue
-		}
-
-		files, _ := ioutil.ReadDir(rootPath)
-		for _, fi := range files {
-			if fi.IsDir() {
-				volumePath := filepath.Join(rootPath, fi.Name())
-				v, err := volume.Restore(volumePath)
-				if err != nil {
-					return nil, err
-				}
-				vols[v.GetName()] = v
-			}
-		}
-	}
-	return vols, nil
-
 }
 
 func New() *stonePlugin {
