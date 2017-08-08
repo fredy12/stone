@@ -115,13 +115,17 @@ func ParseDf() ([]*DfInfo, error) {
 }
 
 type DiskInfo struct {
-	Id         string
-	FsType     string
-	MediaType  string
-	FileSystem string
-	MountPoint string
-	Size       int64
-	IsBootDisk bool
+	Id          string
+	FsType      string
+	MediaType   string
+	FileSystem  string
+	MountPoint  string
+	Size        int64
+	IoClass     int64
+	IsBootDisk  bool
+	IsExclusive bool
+	Used        int64
+	UsedPercent int64
 }
 
 func Collect() ([]*DiskInfo, error) {
@@ -198,13 +202,15 @@ func Collect() ([]*DiskInfo, error) {
 		}
 
 		diskInfos = append(diskInfos, &DiskInfo{
-			Id:         Md5sum(fmt.Sprintf("%s_%s_%s", info.Filesystem, info.Type, diskType)),
-			FileSystem: info.Filesystem,
-			Size:       info.Block,
-			MountPoint: info.Mounted,
-			IsBootDisk: false,
-			FsType:     info.Type,
-			MediaType:  diskType,
+			Id:          Md5sum(fmt.Sprintf("%s_%s_%s", info.Filesystem, info.Type, diskType)),
+			FileSystem:  info.Filesystem,
+			Size:        info.Block,
+			MountPoint:  info.Mounted,
+			IsBootDisk:  false,
+			FsType:      info.Type,
+			MediaType:   diskType,
+			Used:        info.Used,
+			UsedPercent: info.UsedPercent,
 		})
 	}
 	return diskInfos, nil

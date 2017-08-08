@@ -22,6 +22,7 @@ var ( // volumeNameRegex ensures the name assigned for the volume is valid.
 	oldVfsDir = filepath.Join("vfs", "dir")
 
 	validOpts = map[string]bool{
+		"diskId":    true,
 		"fsType":    true,
 		"mediaType": true,
 		"size":      true,
@@ -35,6 +36,7 @@ type validationError struct {
 }
 
 type OptsConfig struct {
+	diskId    string
 	fsType    string // ext4, xfs...
 	mediaType string // ssd, hdd
 	size      int64  // Byte
@@ -104,6 +106,7 @@ func (s *stonePlugin) setOpts(opts map[string]string) (*OptsConfig, error) {
 	}
 
 	return &OptsConfig{
+		diskId:    opts["diskId"],
 		fsType:    opts["fsType"],
 		mediaType: opts["mediaType"],
 		size:      size,
@@ -125,6 +128,15 @@ func (g scoredDiskList) Less(i, j int) bool { return g[i].score < g[j].score }
 func (g scoredDiskList) Sort()              { sort.Sort(g) }
 
 func (s *stonePlugin) chooseDisk(reqOpts *OptsConfig) (*tools.DiskInfo, error) {
+	if reqOpts.diskId != "" {
+		for _, diskInfo := range s.diskInfos {
+			if diskInfo.Id == reqOpts.diskId {
+				return diskInfo, nil
+			}
+		}
+		return nil, errors.New(fmt.Sprintf("Not found the disk with input diskId %s", reqOpts.diskId))
+	}
+
 	candidates := []*tools.DiskInfo{}
 
 	sizeScores := scoredDiskList{}

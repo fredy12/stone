@@ -19,11 +19,11 @@ func Collect() ([]*DiskInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %q", err.Error(), out)
 	}
-	var diskInfoS []*DiskInfo
-	if err := json.Unmarshal(out, &diskInfoS); err != nil {
+	var diskInfos []*DiskInfo
+	if err := json.Unmarshal(out, &diskInfos); err != nil {
 		return nil, err
 	}
-	return diskInfoS, nil
+	return diskInfos, nil
 }
 
 func Command(name string, args ...string) (string, error) {
