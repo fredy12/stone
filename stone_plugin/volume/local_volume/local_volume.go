@@ -1,15 +1,15 @@
 package local_volume
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 
-	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/zanecloud/stone/stone_plugin/tools"
-	"proxy/Godeps/_workspace/src/github.com/pkg/errors"
 )
 
 const (

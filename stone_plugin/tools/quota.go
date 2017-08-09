@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
-	"proxy/Godeps/_workspace/src/github.com/pkg/errors"
 )
 
 const (
