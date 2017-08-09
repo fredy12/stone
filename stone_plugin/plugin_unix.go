@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/utils"
 	"github.com/zanecloud/stone/stone_plugin/tools"
 	"github.com/zanecloud/stone/stone_plugin/volume"
@@ -78,10 +79,6 @@ func (s *stonePlugin) validateName(name string) error {
 }
 
 func validateOpts(opts map[string]string) error {
-	if opts == nil || len(opts) == 0 {
-		return validationError{fmt.Errorf("opts is empty")}
-	}
-
 	for optKey := range opts {
 		if _, exist := validOpts[optKey]; !exist {
 			return validationError{fmt.Errorf("optKey %s is invalid opt", optKey)}
@@ -91,18 +88,38 @@ func validateOpts(opts map[string]string) error {
 }
 
 func (s *stonePlugin) setOpts(opts map[string]string) (*OptsConfig, error) {
+	var err error
+	if opts == nil || len(opts) == 0 {
+		logrus.Warnf("opts is empty, use default size: 10G, ioClass: 0, fsType: random, mediaType: random")
+	}
+
 	if err := validateOpts(opts); err != nil {
 		return nil, err
 	}
 
-	size, err := strconv.ParseInt(opts["size"], 10, 64)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("unknown format of size %s", opts["size"]))
+	var size int64
+	if sizeOpts, exists := opts["size"]; exists {
+		size, err = strconv.ParseInt(sizeOpts, 10, 64)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("unknown format of size %s", opts["size"]))
+		}
+	} else {
+		size = 10
 	}
 
-	ioClass, err := strconv.ParseInt(opts["ioClass"], 10, 64)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("unknown format of ioClass %s", opts["ioClass"]))
+	var ioClass int64
+	if ioClassOpts, exists := opts["ioClass"]; exists {
+		ioClass, err = strconv.ParseInt(ioClassOpts, 10, 64)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("unknown format of ioClass %s", opts["ioClass"]))
+		}
+	} else {
+		ioClass = 0
+	}
+
+	v, exclusive := opts["exclusive"]
+	if v != "" {
+		exclusive, _ = strconv.ParseBool(v)
 	}
 
 	return &OptsConfig{
@@ -111,7 +128,7 @@ func (s *stonePlugin) setOpts(opts map[string]string) (*OptsConfig, error) {
 		mediaType: opts["mediaType"],
 		size:      size,
 		ioClass:   ioClass,
-		exclusive: opts["exclusive"] != "",
+		exclusive: exclusive,
 	}, nil
 }
 
@@ -128,8 +145,13 @@ func (g scoredDiskList) Less(i, j int) bool { return g[i].score < g[j].score }
 func (g scoredDiskList) Sort()              { sort.Sort(g) }
 
 func (s *stonePlugin) chooseDisk(reqOpts *OptsConfig) (*tools.DiskInfo, error) {
+	diskInfos, err := tools.Collect()
+	if err != nil {
+		return nil, err
+	}
+
 	if reqOpts.diskId != "" {
-		for _, diskInfo := range s.diskInfos {
+		for _, diskInfo := range diskInfos {
 			if diskInfo.Id == reqOpts.diskId {
 				return diskInfo, nil
 			}
@@ -144,7 +166,7 @@ func (s *stonePlugin) chooseDisk(reqOpts *OptsConfig) (*tools.DiskInfo, error) {
 	//TODO if opts.mediaType is "", allocate hdd first
 
 OUTER:
-	for _, diskInfo := range s.diskInfos {
+	for _, diskInfo := range diskInfos {
 		// if type is nil, means all types fit
 		if reqOpts.fsType != "" && diskInfo.FsType != reqOpts.fsType {
 			continue

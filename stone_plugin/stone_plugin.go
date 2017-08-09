@@ -30,10 +30,9 @@ var (
 )
 
 type stonePlugin struct {
-	m         sync.Mutex
-	scope     string
-	volumes   map[string]volume.Volume
-	diskInfos []*tools.DiskInfo
+	m       sync.Mutex
+	scope   string
+	volumes map[string]volume.Volume
 }
 
 func assert(err error) {
@@ -43,6 +42,7 @@ func assert(err error) {
 }
 
 func New() *stonePlugin {
+	// TODO: add a task to auto check and load disks
 	diskInfos, err := tools.Collect()
 	if err != nil {
 		logrus.Panicf("error when do init stone plugin with collect disks: %v", err)
@@ -65,8 +65,7 @@ func New() *stonePlugin {
 	logrus.Infof("Restore volumes Information: %s", string(volumeJson))
 
 	return &stonePlugin{
-		volumes:   vols,
-		diskInfos: diskInfos,
+		volumes: vols,
 	}
 }
 
@@ -82,7 +81,6 @@ func (s *stonePlugin) register(api *PluginAPI) {
 	api.Handle("POST", prefix+".Path", s.path)
 	api.Handle("POST", prefix+".Get", s.get)
 	api.Handle("POST", prefix+".List", s.list)
-	api.Handle("POST", prefix+".Info", s.info)
 }
 
 func fmtError(err error, vol string) *string {
@@ -161,7 +159,7 @@ func (s *stonePlugin) remove(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := volume.Remove(v); err != nil {
+	if err := volume.Remove(v, false); err != nil {
 		r.Err = fmtError(err, q.Name)
 		assert(json.NewEncoder(resp).Encode(r))
 		return
@@ -281,8 +279,4 @@ func (s *stonePlugin) list(resp http.ResponseWriter, req *http.Request) {
 		})
 	}
 	assert(json.NewEncoder(resp).Encode(r))
-}
-
-func (s *stonePlugin) info(resp http.ResponseWriter, req *http.Request) {
-	assert(json.NewEncoder(resp).Encode(s.diskInfos))
 }

@@ -22,8 +22,8 @@ func New(driverName, volumeName string, size int64, ioClass int64, exclusive boo
 	return local_volume.New(driverName, volumeName, size, ioClass, exclusive, diskInfo)
 }
 
-func Remove(v Volume) error {
-	return local_volume.Remove(v.(*local_volume.LocalVolume))
+func Remove(v Volume, force bool) error {
+	return local_volume.Remove(v.(*local_volume.LocalVolume), force)
 }
 
 func Restore(volumePath string) (Volume, error) {

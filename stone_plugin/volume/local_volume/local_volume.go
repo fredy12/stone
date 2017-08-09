@@ -6,7 +6,10 @@ import (
 	"strconv"
 	"sync"
 
+	"fmt"
+	"github.com/Sirupsen/logrus"
 	"github.com/zanecloud/stone/stone_plugin/tools"
+	"proxy/Godeps/_workspace/src/github.com/pkg/errors"
 )
 
 const (
@@ -95,14 +98,17 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	return v, nil
 }
 
-func Remove(vol *LocalVolume) error {
-	// remove disk quota
-	tools.RemoveDiskQuota(vol.DataPath, vol.QuotaId)
-
+func Remove(vol *LocalVolume, force bool) error {
 	// remove path
-	if err := tools.RemovePath(vol.VolumePath); err != nil {
+	if err := tools.RemovePath(vol.VolumePath, force); err != nil {
 		return err
 	}
+
+	// remove disk quota
+	if err := tools.RemoveDiskQuota(vol.DataPath, vol.QuotaId); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -111,6 +117,26 @@ func Restore(volumePath string) (*LocalVolume, error) {
 	if err != nil {
 		return nil, err
 	}
+	// restore disk quota
+	if v.QuotaId == uint32(0) {
+		return nil, errors.New(fmt.Sprintf("quota id not exist when restore volume: %s", v.Name))
+	}
+
+	if exists, err := tools.IsDiskQuotaExist(v.DataPath, v.QuotaId); err != nil {
+		return nil, err
+	} else {
+		if !exists {
+			logrus.Infof("start restore quota with id: %d, size: %d for volume: %s", v.QuotaId, v.Size, v.Name)
+			sizeStr := strconv.FormatInt(v.Size, 10)
+			err = tools.SetDiskQuota(v.DataPath, sizeStr+"B", v.QuotaId)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			logrus.Infof("volume: %s quota exist with id: %d, size: %d", v.Name, v.QuotaId, v.Size)
+		}
+	}
+
 	return v, nil
 }
 

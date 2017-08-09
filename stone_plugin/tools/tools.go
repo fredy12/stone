@@ -36,10 +36,10 @@ func Command(name string, args ...string) (string, error) {
 	return string(output), err
 }
 
-func RemovePath(path string) error {
-	if err := os.RemoveAll(path); err != nil {
+func RemovePath(path string, force bool) error {
+	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return err
 		}
 		return err
 	}

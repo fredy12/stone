@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
+	"proxy/Godeps/_workspace/src/github.com/pkg/errors"
 )
 
 const (
@@ -19,7 +20,8 @@ const (
 	MEGABYTE   = 1024 * KILOBYTE
 	GIGABYTE   = 1024 * MEGABYTE
 	TERABYTE   = 1024 * GIGABYTE
-	quotaMinId = uint32(16777216)
+	quotaMinId = uint32(8388609)
+	quotaMaxId = uint32(16777215)
 )
 
 var (
@@ -125,6 +127,31 @@ func SetSubtree(dir string, qid uint32) (uint32, error) {
 	return id, err
 }
 
+func IsDiskQuotaExist(dir string, quotaId uint32) (bool, error) {
+	if !UseQuota {
+		return false, nil
+	}
+
+	if quotaLastId == 0 {
+		var err error
+		quotaLastId, err = loadQuotaIds()
+		if err != nil {
+			return false, err
+		}
+	}
+	if v, exists := quotaIds[quotaId]; exists {
+		if v >= uint32(2) {
+			// this quotaId exists twice
+			return true, errors.New(fmt.Sprintf("Find duplicate quota id %d", quotaId))
+		}
+		if v == uint32(1) {
+			quotaIds[quotaId] = v + 1
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func SetDiskQuota(dir string, size string, quotaId uint32) error {
 	if !UseQuota {
 		return nil
@@ -152,7 +179,15 @@ func RemoveDiskQuota(dir string, quotaId uint32) error {
 		return nil
 	}
 
-	return unsetUserQuota(quotaId)
+	mountPoint, err := QuotaDriverStart(dir)
+	if err != nil {
+		return err
+	}
+	if len(mountPoint) == 0 {
+		return fmt.Errorf("mountpoint not found: %s", dir)
+	}
+
+	return unsetUserQuota(quotaId, mountPoint)
 }
 
 func GetDevId(dir string) (uint64, error) {
@@ -205,9 +240,9 @@ func doCmd(name string, args ...string) (string, error) {
 	return string(output), err
 }
 
-func unsetUserQuota(quotaId uint32) error {
+func unsetUserQuota(quotaId uint32, mountPoint string) error {
 	uid := strconv.FormatUint(uint64(quotaId), 10)
-	_, err := doCmd("setquota", "-g", uid, "0", "0", "0", "0", "-a")
+	_, err := doCmd("setquota", "-g", uid, "0", "0", "0", "0", mountPoint)
 	return err
 }
 
@@ -216,6 +251,12 @@ func setUserQuota(quotaId uint32, diskQuota uint64, mountPoint string) error {
 	limit := strconv.FormatUint(diskQuota, 10)
 	_, err := doCmd("setquota", "-g", uid, "0", limit, "0", "0", mountPoint)
 	return err
+}
+
+func getUserQuota(quotaId uint32, mountPoint string) (string, error) {
+	uid := strconv.FormatUint(uint64(quotaId), 10)
+	out, err := doCmd("repquota", "-gv", mountPoint, "|", "grep", uid)
+	return out, err
 }
 
 //getfattr -n system.subtree --only-values --absolute-names /
@@ -263,7 +304,7 @@ func loadQuotaIds() (uint32, error) {
 		}
 		id, err := strconv.Atoi(parts[0][1:])
 		uid := uint32(id)
-		if err == nil && uid > quotaMinId {
+		if err == nil && uid > quotaMinId && uid <= quotaMaxId {
 			quotaIds[uid] = 1
 			if uid > minId {
 				minId = uid
@@ -292,6 +333,9 @@ func GetNextQuatoId() (uint32, error) {
 			id = quotaMinId
 		}
 		id++
+		if id > quotaMaxId {
+			id = id%quotaMaxId + quotaMinId
+		}
 		if _, ok := quotaIds[id]; !ok {
 			break
 		}
