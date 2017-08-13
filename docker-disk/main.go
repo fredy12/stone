@@ -87,10 +87,7 @@ func Run() {
 
 		useRootDisk := false
 		f1.Parse(os.Args[2:])
-		if len(os.Args) < 3 {
-			// not show verbose
-			logrus.SetLevel(logrus.PanicLevel)
-		}
+		logrus.SetLevel(logrus.PanicLevel)
 		if len(os.Args) == 3 {
 			if os.Args[2] == "verbose" {
 				logrus.SetLevel(logrus.DebugLevel)

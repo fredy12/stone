@@ -17,8 +17,6 @@ var (
 	PrintVersion bool
 	UseRootDisk  bool
 	SocketPath   string
-
-	Version string
 )
 
 func init() {
@@ -53,7 +51,7 @@ func main() {
 	defer exit()
 
 	if PrintVersion {
-		fmt.Printf("ZaneCloud Stone Docker Volume plugin: %s\n", Version)
+		fmt.Printf("ZaneCloud Stone Docker Volume plugin: %s\n", VERSION)
 		return
 	}
 
