@@ -25,12 +25,13 @@ const (
 )
 
 var (
-	lock         sync.Mutex
-	quotaLastId  uint32
-	UseQuota                    = true
-	quotaIds                    = make(map[uint32]uint32)
-	mountPoints                 = make(map[uint64]string)
-	bytesPattern *regexp.Regexp = regexp.MustCompile(`(?i)^(-?\d+)([KMGT]B?|B)$`)
+	lock          sync.Mutex
+	quotaLastId   uint32
+	UseQuota                     = true
+	quotaIds                     = make(map[uint32]uint32)
+	mountPoints                  = make(map[uint64]string)
+	bytesPattern  *regexp.Regexp = regexp.MustCompile(`(?i)^(-?\d+)([KMGT]B?|B)$`)
+	attrNamespace                = "user.test"
 )
 
 func QuotaDriverStart(dir string) (string, error) {
@@ -103,7 +104,7 @@ func QuotaDriverStart(dir string) (string, error) {
 	return mountPoint, err
 }
 
-//setfattr -n system.subtree -v $QUOTAID
+//setfattr -n user.test -v $QUOTAID
 func SetSubtree(dir string, qid uint32) (uint32, error) {
 	if !UseQuota {
 		return 0, nil
@@ -123,7 +124,7 @@ func SetSubtree(dir string, qid uint32) (uint32, error) {
 		return 0, err
 	}
 	strid := strconv.FormatUint(uint64(id), 10)
-	_, err = doCmd("setfattr", "-n", "system.subtree", "-v", strid, dir)
+	_, err = doCmd("setfattr", "-n", attrNamespace, "-v", strid, dir)
 	return id, err
 }
 
@@ -259,10 +260,10 @@ func getUserQuota(quotaId uint32, mountPoint string) (string, error) {
 	return out, err
 }
 
-//getfattr -n system.subtree --only-values --absolute-names /
+//getfattr -n user.test --only-values --absolute-names /
 func GetFileAttr(dir string) uint32 {
 	v := 0
-	out, err := doCmd("getfattr", "-n", "system.subtree", "--only-values", "--absolute-names", dir)
+	out, err := doCmd("getfattr", "-n", attrNamespace, "--only-values", "--absolute-names", dir)
 	if err == nil {
 		v, _ = strconv.Atoi(out)
 	}
@@ -271,7 +272,7 @@ func GetFileAttr(dir string) uint32 {
 
 func SetFileAttr(dir string, id uint32) error {
 	strid := strconv.FormatUint(uint64(id), 10)
-	_, err := doCmd("setfattr", "-n", "system.subtree", "-v", strid, dir)
+	_, err := doCmd("setfattr", "-n", attrNamespace, "-v", strid, dir)
 	return err
 }
 

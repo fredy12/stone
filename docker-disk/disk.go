@@ -156,6 +156,7 @@ func Collect(useRootDisk bool) ([]*DiskInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	bootPath = strings.TrimSpace(string(bootPath))
 
 	// 通过 df 命令查询磁盘的空间信息
 	infos, err := ParseDf()
