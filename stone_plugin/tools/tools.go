@@ -15,7 +15,9 @@ func Collect(useRootDisk bool) ([]*DiskInfo, error) {
 	var DiskCmd = "docker-disk"
 	args := []string{
 		"list",
-		"rootdisk",
+	}
+	if useRootDisk {
+		args = append(args, "rootdisk")
 	}
 	out, err := exec.Command(DiskCmd, args...).CombinedOutput()
 	if err != nil {
