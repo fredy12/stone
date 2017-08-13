@@ -99,13 +99,13 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 }
 
 func Remove(vol *LocalVolume, force bool) error {
-	// remove path
-	if err := tools.RemovePath(vol.VolumePath, force); err != nil {
+	// remove disk quota
+	if err := tools.RemoveDiskQuota(vol.DataPath, vol.QuotaId); err != nil {
 		return err
 	}
 
-	// remove disk quota
-	if err := tools.RemoveDiskQuota(vol.DataPath, vol.QuotaId); err != nil {
+	// remove path
+	if err := tools.RemovePath(vol.VolumePath, force); err != nil {
 		return err
 	}
 

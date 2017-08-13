@@ -104,7 +104,7 @@ func (s *stonePlugin) setOpts(opts map[string]string) (*OptsConfig, error) {
 			return nil, errors.New(fmt.Sprintf("unknown format of size %s", opts["size"]))
 		}
 	} else {
-		size = 10
+		size = 1 * 1024 * 1024 * 1024 // default 1G
 	}
 
 	var ioClass int64
@@ -145,7 +145,7 @@ func (g scoredDiskList) Less(i, j int) bool { return g[i].score < g[j].score }
 func (g scoredDiskList) Sort()              { sort.Sort(g) }
 
 func (s *stonePlugin) chooseDisk(reqOpts *OptsConfig) (*tools.DiskInfo, error) {
-	diskInfos, err := tools.Collect()
+	diskInfos, err := tools.Collect(USE_ROOT_DISK)
 	if err != nil {
 		return nil, err
 	}

@@ -79,15 +79,36 @@ func Run() {
 	case "list":
 		f1 := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 		f1.Usage = func() {
-			subCmdUsage("list", "", []map[string]string{{"verbose": "Show verbose logs"}})
+			subCmdUsage("list", "", []map[string]string{
+				{"rootdisk": "Show root disks"},
+				{"verbose": "Show verbose logs"},
+			})
 		}
+
+		useRootDisk := false
 		f1.Parse(os.Args[2:])
-		if len(os.Args) < 3 || os.Args[2] != "verbose" {
+		if len(os.Args) < 3 {
 			// not show verbose
 			logrus.SetLevel(logrus.PanicLevel)
 		}
+		if len(os.Args) == 3 {
+			if os.Args[2] == "verbose" {
+				logrus.SetLevel(logrus.DebugLevel)
+			}
+			if os.Args[2] == "rootdisk" {
+				useRootDisk = true
+			}
+		}
+		if len(os.Args) > 3 {
+			if os.Args[2] == "verbose" || os.Args[3] == "verbose" {
+				logrus.SetLevel(logrus.DebugLevel)
+			}
+			if os.Args[3] == "rootdisk" || os.Args[3] == "rootdisk" {
+				useRootDisk = true
+			}
+		}
 
-		diskInfo, err := Collect()
+		diskInfo, err := Collect(useRootDisk)
 		assert(err)
 		toJSON(diskInfo)
 	}

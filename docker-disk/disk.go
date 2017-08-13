@@ -31,6 +31,7 @@ var (
 	ErrDfNotResult    = errors.New("Command df not output result")
 	ErrDfNotOkResult  = errors.New("Command df not right result")
 	ErrIostatNoResult = errors.New("Command iostat not output result")
+	rootPath          = []string{"/", "/var/lib/docker", "/boot"}
 )
 
 type DfInfo struct {
@@ -128,7 +129,7 @@ type DiskInfo struct {
 	UsedPercent int64
 }
 
-func Collect() ([]*DiskInfo, error) {
+func Collect(useRootDisk bool) ([]*DiskInfo, error) {
 	deviceFlag := make(map[string]string)
 	deviceFlagType := map[string]string{
 		"0": SSD,
@@ -168,12 +169,17 @@ func Collect() ([]*DiskInfo, error) {
 
 	diskInfos := make([]*DiskInfo, 0, len(infos))
 	for _, info := range infos {
+		isBootDisk := false
 		if info.Mounted == bootPath {
-			continue
+			if !useRootDisk {
+				continue
+			}
+			isBootDisk = true
 		}
-
-		if skipMountedPath(info.Mounted) {
-			continue
+		if !useRootDisk {
+			if skipRootPath(info.Mounted) {
+				continue
+			}
 		}
 
 		if skipFilesystem(info.Filesystem) {
@@ -206,7 +212,7 @@ func Collect() ([]*DiskInfo, error) {
 			FileSystem:  info.Filesystem,
 			Size:        info.Block,
 			MountPoint:  info.Mounted,
-			IsBootDisk:  false,
+			IsBootDisk:  isBootDisk,
 			FsType:      info.Type,
 			MediaType:   diskType,
 			Used:        info.Used,
@@ -248,12 +254,14 @@ func Command(name string, args ...string) (string, error) {
 	return string(output), err
 }
 
-func skipMountedPath(mount string) bool {
+func skipRootPath(mount string) bool {
 	mount = strings.TrimSpace(mount)
 
-	// skip boot path
-	if mount == "/" {
-		return true
+	// skip root path
+	for _, p := range rootPath {
+		if mount == p {
+			return true
+		}
 	}
 	return false
 }

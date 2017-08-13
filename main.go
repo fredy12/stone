@@ -15,8 +15,7 @@ import (
 
 var (
 	PrintVersion bool
-	ListenAddr   string
-	VolumesPath  string
+	UseRootDisk  bool
 	SocketPath   string
 
 	Version string
@@ -26,9 +25,8 @@ func init() {
 	log.SetPrefix(os.Args[0] + " | ")
 
 	flag.BoolVar(&PrintVersion, "v", false, "Show the plugin version information")
-	flag.StringVar(&ListenAddr, "l", "localhost:3476", "Server listen address")
-	flag.StringVar(&VolumesPath, "d", "/var/lib/stone/volumes", "Path where to store the volumes")
 	flag.StringVar(&SocketPath, "s", "/run/docker/plugins", "Path to the plugin socket")
+	flag.BoolVar(&UseRootDisk, "r", false, "Use the root path / or /boot or /var/lib/docker to produce volumes")
 }
 
 func assert(err error) {
@@ -59,7 +57,7 @@ func main() {
 		return
 	}
 
-	plugin := stone_plugin.NewPluginAPI(SocketPath)
+	plugin := stone_plugin.NewPluginAPI(SocketPath, UseRootDisk)
 
 	log.Println("Serving plugin API at", SocketPath)
 	p := plugin.Serve()

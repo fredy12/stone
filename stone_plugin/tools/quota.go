@@ -20,8 +20,8 @@ const (
 	MEGABYTE   = 1024 * KILOBYTE
 	GIGABYTE   = 1024 * MEGABYTE
 	TERABYTE   = 1024 * GIGABYTE
-	quotaMinId = uint32(8388609)
-	quotaMaxId = uint32(16777215)
+	quotaMinId = uint32(20971521)
+	quotaMaxId = uint32(23068672)
 )
 
 var (

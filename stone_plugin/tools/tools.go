@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,10 +11,11 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-func Collect() ([]*DiskInfo, error) {
+func Collect(useRootDisk bool) ([]*DiskInfo, error) {
 	var DiskCmd = "docker-disk"
 	args := []string{
 		"list",
+		"rootdisk",
 	}
 	out, err := exec.Command(DiskCmd, args...).CombinedOutput()
 	if err != nil {
@@ -37,11 +39,19 @@ func Command(name string, args ...string) (string, error) {
 }
 
 func RemovePath(path string, force bool) error {
-	if err := os.Remove(path); err != nil {
-		if os.IsNotExist(err) {
+	_, err := os.Stat(path)
+	if err == nil || os.IsExist(err) {
+		if err := os.RemoveAll(path); err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
-		return err
+	} else {
+		if !force {
+			return errors.New(fmt.Sprintf("%s: no such file or directory", path))
+		}
 	}
+
 	return nil
 }
