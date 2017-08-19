@@ -73,8 +73,8 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	v.VolumePath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName)
 	v.DataPath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName, VolumeDataPathName)
 
-	// allocate volume
-	if err = v.allocateVolumeOnDisk(); err != nil {
+	// allocate volume path
+	if err = v.allocateVolumeOnDisk(v.VolumePath); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -82,6 +82,11 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 			os.RemoveAll(v.VolumePath)
 		}
 	}()
+
+	// record volume to disk before quota set
+	if err = v.toDisk(v.VolumePath); err != nil {
+		return nil, err
+	}
 
 	// set disk quota
 	qc, err := quota.NewQuota(v.BasePath, v.BackingFs)
@@ -96,8 +101,8 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 		return nil, err
 	}
 
-	// record volume to disk
-	if err = v.toDisk(v.VolumePath); err != nil {
+	// after quota set, allocate data path on disk
+	if err = v.allocateVolumeOnDisk(v.DataPath); err != nil {
 		return nil, err
 	}
 

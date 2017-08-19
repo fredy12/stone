@@ -1,19 +1,18 @@
 package local_volume
 
 import (
-	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"errors"
+	"io/ioutil"
 
 	"encoding/json"
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/pkg/idtools"
 )
 
-func (v *LocalVolume) allocateVolumeOnDisk() error {
-	path := v.GetPath()
+func (v *LocalVolume) allocateVolumeOnDisk(path string) error {
 	rootUID, rootGID, err := idtools.GetRootUIDGID(nil, nil)
 	if err != nil {
 		return err
