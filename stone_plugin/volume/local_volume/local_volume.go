@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/zanecloud/stone/stone_plugin/quota"
 	"github.com/zanecloud/stone/stone_plugin/tools"
 )
 
@@ -24,6 +23,10 @@ type LocalVolume struct {
 	m sync.Mutex
 	// unique name of the volume
 	Name string
+	// BackingFs
+	BackingFs string
+	// BasePath
+	BasePath string
 	// volumePath
 	VolumePath string
 	// dataPath is the path on the host where the data lives
@@ -40,8 +43,8 @@ type LocalVolume struct {
 	IoClass int64
 	// exclusive
 	Exclusive bool
-	// quotaId
-	QuotaId uint32
+	// quotaControl
+	quotaControl quota.QuotaControl
 	// active refcounts the active mounts
 	Active activeMount
 }
@@ -61,9 +64,11 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 		Size:       size,
 		IoClass:    ioClass,
 		Exclusive:  isExclusive,
+		BackingFs:  diskInfo.FsType,
 	}
 
-	// set volume path and data path
+	// set base path, volume path and data path
+	v.BasePath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName)
 	v.VolumePath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName)
 	v.DataPath = filepath.Join(diskInfo.MountPoint, VolumeRootPathName, volumeName, VolumeDataPathName)
 
@@ -78,15 +83,15 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	}()
 
 	// set disk quota
-	sizeStr := strconv.FormatInt(size, 10)
-	quotaId, err := tools.GetNextQuatoId()
+	qc, err := quota.NewQuota(v.BasePath, v.BackingFs)
 	if err != nil {
 		return nil, err
 	}
-	v.QuotaId = quotaId
-
-	err = tools.SetDiskQuota(v.DataPath, sizeStr+"B", quotaId)
-	if err != nil {
+	v.quotaControl = qc
+	q := &quota.Quota{
+		Size: uint64(size),
+	}
+	if err := qc.SetQuota(v.VolumePath, q); err != nil {
 		return nil, err
 	}
 
@@ -100,8 +105,10 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 
 func Remove(vol *LocalVolume, force bool) error {
 	// remove disk quota
-	if err := tools.RemoveDiskQuota(vol.DataPath, vol.QuotaId); err != nil {
-		return err
+	if vol.quotaControl != nil {
+		if err := vol.quotaControl.RemoveQuota(vol.VolumePath); err != nil {
+			return err
+		}
 	}
 
 	// remove path
@@ -118,25 +125,11 @@ func Restore(volumePath string) (*LocalVolume, error) {
 		return nil, err
 	}
 	// restore disk quota
-	if v.QuotaId == uint32(0) {
-		return nil, errors.New(fmt.Sprintf("quota id not exist when restore volume: %s", v.Name))
+	qc, err := quota.NewQuota(v.VolumePath, v.BackingFs)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("new quota control error when restore volume: %s", v.Name))
 	}
-
-	if exists, err := tools.IsDiskQuotaExist(v.DataPath, v.QuotaId); err != nil {
-		return nil, err
-	} else {
-		if !exists {
-			logrus.Infof("start restore quota with id: %d, size: %d for volume: %s", v.QuotaId, v.Size, v.Name)
-			sizeStr := strconv.FormatInt(v.Size, 10)
-			err = tools.SetDiskQuota(v.DataPath, sizeStr+"B", v.QuotaId)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			logrus.Infof("volume: %s quota exist with id: %d, size: %d", v.Name, v.QuotaId, v.Size)
-		}
-	}
-
+	v.quotaControl = qc
 	return v, nil
 }
 

@@ -1,4 +1,4 @@
-package tools
+package quota
 
 import (
 	"errors"
@@ -25,33 +25,115 @@ const (
 )
 
 var (
-	lock          sync.Mutex
-	quotaLastId   uint32
-	UseQuota                     = true
-	quotaIds                     = make(map[uint32]uint32)
-	mountPoints                  = make(map[uint64]string)
-	bytesPattern  *regexp.Regexp = regexp.MustCompile(`(?i)^(-?\d+)([KMGT]B?|B)$`)
-	attrNamespace                = "user.test"
+	ext4lock     sync.Mutex
+	quotaLastId  uint32
+	UseQuota                    = true
+	quotaIds                    = make(map[uint32]uint32)
+	mountPoints                 = make(map[uint64]string)
+	bytesPattern *regexp.Regexp = regexp.MustCompile(`(?i)^(-?\d+)([KMGT]B?|B)$`)
 )
 
-func QuotaDriverStart(dir string) (string, error) {
+type Ext4QuotaControl struct{}
+
+func NewExt4QuotaControl(basePath string) (QuotaControl, error) {
+	_, err := ext4QuotaDriverStart(basePath)
+	if err != nil {
+		return nil, err
+	}
+
+	q := Ext4QuotaControl{}
+
+	logrus.Debugf("NewExt4Control(%s)", basePath)
+	return &q, nil
+}
+
+func (q *Ext4QuotaControl) Name() string {
+	return QuotaExt4
+}
+
+func (q *Ext4QuotaControl) SetQuota(targetPath string, quota *Quota) error {
+	if !UseQuota {
+		return nil
+	}
+
+	mountPoint, err := ext4QuotaDriverStart(targetPath)
+	if err != nil {
+		return err
+	}
+	if len(mountPoint) == 0 {
+		return fmt.Errorf("mountpoint not found: %s", targetPath)
+	}
+
+	quotaId := getFileAttr(targetPath)
+	if quotaId == 0 {
+		// quota not exist
+		quotaId, err = getNextQuatoId()
+		if err != nil {
+			return err
+		}
+
+		quotaId, err := setSubtree(targetPath, uint32(quotaId))
+		if quotaId == 0 {
+			return fmt.Errorf("subtree not found: %s %v", targetPath, err)
+		}
+	}
+
+	limit := formatSize(quota.Size)
+	return setUserQuota(quotaId, limit, mountPoint)
+}
+
+func (q *Ext4QuotaControl) GetQuota(targetPath string) (*Quota, error) {
+	if !UseQuota {
+		return &Quota{Size: 0}, nil
+	}
+
+	quotaId := getFileAttr(targetPath)
+	if quotaId == 0 {
+		// no quota
+		return nil, fmt.Errorf("quota not found for path : %s", targetPath)
+	}
+
+	mountPoint, err := ext4QuotaDriverStart(targetPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(mountPoint) == 0 {
+		return nil, fmt.Errorf("mountpoint not found: %s", targetPath)
+	}
+
+	quotaLimit, err := getUserQuota(quotaId, mountPoint)
+	if err != nil {
+		return nil, err
+	}
+	return &Quota{Size: quotaLimit}, nil
+}
+
+func (q *Ext4QuotaControl) RemoveQuota(targetPath string) error {
+	if !UseQuota {
+		return nil
+	}
+
+	return q.SetQuota(targetPath, &Quota{Size: 0})
+}
+
+func ext4QuotaDriverStart(dir string) (string, error) {
 	if !UseQuota {
 		return "", nil
 	}
 
-	devId, err := GetDevId(dir)
+	devId, err := getDevId(dir)
 	if err != nil {
 		return "", err
 	}
 
-	lock.Lock()
-	defer lock.Unlock()
+	ext4lock.Lock()
+	defer ext4lock.Unlock()
 
 	if mp, ok := mountPoints[devId]; ok {
 		return mp, nil
 	}
 
-	mountPoint, hasQuota, _ := CheckMountpoint(devId)
+	mountPoint, hasQuota, _ := checkMountpoint(devId)
 	if len(mountPoint) == 0 {
 		return mountPoint, fmt.Errorf("mountPoint not found: %s", dir)
 	}
@@ -59,7 +141,7 @@ func QuotaDriverStart(dir string) (string, error) {
 		doCmd("mount", "-o", "remount,grpquota", mountPoint)
 	}
 
-	vfsVersion, quotaFilename, err := GetVFSVersionAndQuotaFile(devId)
+	vfsVersion, quotaFilename, err := getVFSVersionAndQuotaFile(devId)
 	if err != nil {
 		return "", err
 	}
@@ -104,8 +186,18 @@ func QuotaDriverStart(dir string) (string, error) {
 	return mountPoint, err
 }
 
-//setfattr -n user.test -v $QUOTAID
-func SetSubtree(dir string, qid uint32) (uint32, error) {
+//getfattr -n system.subtree --only-values --absolute-names /
+func getFileAttr(dir string) uint32 {
+	v := 0
+	out, err := doCmd("getfattr", "-n", "system.subtree", "--only-values", "--absolute-names", dir)
+	if err == nil {
+		v, _ = strconv.Atoi(out)
+	}
+	return uint32(v)
+}
+
+//setfattr -n system.subtree -v $QUOTAID
+func setSubtree(dir string, qid uint32) (uint32, error) {
 	if !UseQuota {
 		return 0, nil
 	}
@@ -113,22 +205,22 @@ func SetSubtree(dir string, qid uint32) (uint32, error) {
 	id := qid
 	var err error
 	if id == 0 {
-		id = GetFileAttr(dir)
+		id = getFileAttr(dir)
 		if id > 0 {
 			return id, nil
 		}
-		id, err = GetNextQuatoId()
+		id, err = getNextQuatoId()
 	}
 
 	if err != nil {
 		return 0, err
 	}
 	strid := strconv.FormatUint(uint64(id), 10)
-	_, err = doCmd("setfattr", "-n", attrNamespace, "-v", strid, dir)
+	_, err = doCmd("setfattr", "-n", "system.subtree", "-v", strid, dir)
 	return id, err
 }
 
-func IsDiskQuotaExist(dir string, quotaId uint32) (bool, error) {
+func isDiskQuotaExist(dir string, quotaId uint32) (bool, error) {
 	if !UseQuota {
 		return false, nil
 	}
@@ -153,45 +245,7 @@ func IsDiskQuotaExist(dir string, quotaId uint32) (bool, error) {
 	return false, nil
 }
 
-func SetDiskQuota(dir string, size string, quotaId uint32) error {
-	if !UseQuota {
-		return nil
-	}
-
-	mountPoint, err := QuotaDriverStart(dir)
-	if err != nil {
-		return err
-	}
-	if len(mountPoint) == 0 {
-		return fmt.Errorf("mountpoint not found: %s", dir)
-	}
-
-	id, err := SetSubtree(dir, uint32(quotaId))
-	if id == 0 {
-		return fmt.Errorf("subtree not found: %s %v", dir, err)
-	}
-
-	limit := toByteSize(size)
-	return setUserQuota(id, limit, mountPoint)
-}
-
-func RemoveDiskQuota(dir string, quotaId uint32) error {
-	if !UseQuota {
-		return nil
-	}
-
-	mountPoint, err := QuotaDriverStart(dir)
-	if err != nil {
-		return err
-	}
-	if len(mountPoint) == 0 {
-		return fmt.Errorf("mountpoint not found: %s", dir)
-	}
-
-	return unsetUserQuota(quotaId, mountPoint)
-}
-
-func GetDevId(dir string) (uint64, error) {
+func getDevId(dir string) (uint64, error) {
 	var st syscall.Stat_t
 	if err := syscall.Stat(dir, &st); err != nil {
 		logrus.Warnf("getDirDev: %s, %v", dir, err)
@@ -200,7 +254,7 @@ func GetDevId(dir string) (uint64, error) {
 	return uint64(st.Dev), nil
 }
 
-func CheckMountpoint(devId uint64) (string, bool, string) {
+func checkMountpoint(devId uint64) (string, bool, string) {
 	output, err := ioutil.ReadFile("/proc/mounts")
 	if err != nil {
 		logrus.Warnf("ReadFile: %v", err)
@@ -215,7 +269,7 @@ func CheckMountpoint(devId uint64) (string, bool, string) {
 		if len(parts) != 6 {
 			continue
 		}
-		devId2, _ := GetDevId(parts[1])
+		devId2, _ := getDevId(parts[1])
 		if devId == devId2 {
 			mountPoint = parts[1]
 			fsType = parts[2]
@@ -241,12 +295,6 @@ func doCmd(name string, args ...string) (string, error) {
 	return string(output), err
 }
 
-func unsetUserQuota(quotaId uint32, mountPoint string) error {
-	uid := strconv.FormatUint(uint64(quotaId), 10)
-	_, err := doCmd("setquota", "-g", uid, "0", "0", "0", "0", mountPoint)
-	return err
-}
-
 func setUserQuota(quotaId uint32, diskQuota uint64, mountPoint string) error {
 	uid := strconv.FormatUint(uint64(quotaId), 10)
 	limit := strconv.FormatUint(diskQuota, 10)
@@ -254,26 +302,20 @@ func setUserQuota(quotaId uint32, diskQuota uint64, mountPoint string) error {
 	return err
 }
 
-func getUserQuota(quotaId uint32, mountPoint string) (string, error) {
+func getUserQuota(quotaId uint32, mountPoint string) (uint64, error) {
 	uid := strconv.FormatUint(uint64(quotaId), 10)
 	out, err := doCmd("repquota", "-gv", mountPoint, "|", "grep", uid)
-	return out, err
-}
-
-//getfattr -n user.test --only-values --absolute-names /
-func GetFileAttr(dir string) uint32 {
-	v := 0
-	out, err := doCmd("getfattr", "-n", attrNamespace, "--only-values", "--absolute-names", dir)
-	if err == nil {
-		v, _ = strconv.Atoi(out)
+	items := strings.Fields(strings.TrimSpace(out))
+	if len(items) < 5 {
+		return 0, fmt.Errorf("error result when getUserQuota with quoataId: %d, mountPoint: %s",
+			quotaId, mountPoint)
 	}
-	return uint32(v)
-}
-
-func SetFileAttr(dir string, id uint32) error {
-	strid := strconv.FormatUint(uint64(id), 10)
-	_, err := doCmd("setfattr", "-n", attrNamespace, "-v", strid, dir)
-	return err
+	id, err := strconv.ParseUint(items[4], 10, 0)
+	if err != nil {
+		return 0, fmt.Errorf("error parseUint when getUserQuota with quoataId: %d, mountPoint: %s",
+			quotaId, mountPoint)
+	}
+	return id, err
 }
 
 //load
@@ -317,9 +359,9 @@ func loadQuotaIds() (uint32, error) {
 }
 
 //next id
-func GetNextQuatoId() (uint32, error) {
-	lock.Lock()
-	defer lock.Unlock()
+func getNextQuatoId() (uint32, error) {
+	ext4lock.Lock()
+	defer ext4lock.Unlock()
 
 	if quotaLastId == 0 {
 		var err error
@@ -344,6 +386,14 @@ func GetNextQuatoId() (uint32, error) {
 	quotaIds[id] = 1
 	quotaLastId = id
 	return id, nil
+}
+
+func formatSize(bytes uint64) uint64 {
+	if bytes < KILOBYTE {
+		return 1
+	}
+
+	return bytes / KILOBYTE
 }
 
 func toByteSize(s string) uint64 {
@@ -379,7 +429,7 @@ func toByteSize(s string) uint64 {
 	return bytes / KILOBYTE
 }
 
-func GetVFSVersionAndQuotaFile(devId uint64) (string, string, error) {
+func getVFSVersionAndQuotaFile(devId uint64) (string, string, error) {
 	output, err := ioutil.ReadFile("/proc/mounts")
 	if err != nil {
 		logrus.Warnf("ReadFile: %v", err)
@@ -395,7 +445,7 @@ func GetVFSVersionAndQuotaFile(devId uint64) (string, string, error) {
 			continue
 		}
 
-		devId2, _ := GetDevId(parts[1])
+		devId2, _ := getDevId(parts[1])
 		if devId == devId2 {
 			for _, opt := range strings.Split(parts[3], ",") {
 				items := strings.SplitN(opt, "=", 2)
