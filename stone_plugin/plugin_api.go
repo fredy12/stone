@@ -14,7 +14,10 @@ import (
 
 const socketName = "stone.sock"
 
-var USE_ROOT_DISK bool = false
+var (
+	USE_ROOT_DISK bool = false
+	FS_TYPE string = "all"
+)
 
 type plugin interface {
 	implement() string
@@ -42,7 +45,8 @@ func accept(handler http.Handler) http.Handler {
 	return http.HandlerFunc(f)
 }
 
-func NewPluginAPI(prefix string, useRootDisk bool) *PluginAPI {
+func NewPluginAPI(prefix string, fsType string, useRootDisk bool) *PluginAPI {
+	FS_TYPE = fsType
 	USE_ROOT_DISK = useRootDisk
 	os.MkdirAll(prefix, 0700)
 

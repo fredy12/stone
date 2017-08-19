@@ -69,7 +69,7 @@ func Run() {
 	flag.Usage = usage
 	flag.Parse()
 
-	if len(os.Args) < 2 {
+	if len(os.Args) < 3 {
 		usage()
 		os.Exit(2)
 	}
@@ -80,6 +80,7 @@ func Run() {
 		f1 := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 		f1.Usage = func() {
 			subCmdUsage("list", "", []map[string]string{
+				{"fstype": "Show which fstype disks: all/xfs/ext4"},
 				{"rootdisk": "Show root disks"},
 				{"verbose": "Show verbose logs"},
 			})
@@ -88,24 +89,20 @@ func Run() {
 		useRootDisk := false
 		f1.Parse(os.Args[2:])
 		logrus.SetLevel(logrus.PanicLevel)
-		if len(os.Args) == 3 {
-			if os.Args[2] == "verbose" {
-				logrus.SetLevel(logrus.DebugLevel)
-			}
-			if os.Args[2] == "rootdisk" {
-				useRootDisk = true
-			}
+		fsType := os.Args[2]
+		if fsType != "xfs" && fsType != "ext4" {
+			fsType = ""
 		}
-		if len(os.Args) > 3 {
-			if os.Args[2] == "verbose" || os.Args[3] == "verbose" {
+		for _, arg := range os.Args[2:] {
+			if arg == "verbose" {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
-			if os.Args[3] == "rootdisk" || os.Args[3] == "rootdisk" {
+			if arg == "rootdisk" {
 				useRootDisk = true
 			}
 		}
 
-		diskInfo, err := Collect(useRootDisk)
+		diskInfo, err := Collect(fsType, useRootDisk)
 		assert(err)
 		toJSON(diskInfo)
 	}

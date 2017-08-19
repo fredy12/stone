@@ -15,6 +15,7 @@ import (
 
 var (
 	PrintVersion bool
+	DiskFsType   string
 	UseRootDisk  bool
 	SocketPath   string
 )
@@ -24,7 +25,9 @@ func init() {
 
 	flag.BoolVar(&PrintVersion, "v", false, "Show the plugin version information")
 	flag.StringVar(&SocketPath, "s", "/run/docker/plugins", "Path to the plugin socket")
+	flag.StringVar(&DiskFsType, "t", "all", "Which file system type to use, default is all")
 	flag.BoolVar(&UseRootDisk, "r", false, "Use the root path / or /boot or /var/lib/docker to produce volumes")
+
 }
 
 func assert(err error) {
@@ -55,7 +58,7 @@ func main() {
 		return
 	}
 
-	plugin := stone_plugin.NewPluginAPI(SocketPath, UseRootDisk)
+	plugin := stone_plugin.NewPluginAPI(SocketPath, DiskFsType, UseRootDisk)
 
 	log.Println("Serving plugin API at", SocketPath)
 	p := plugin.Serve()

@@ -11,10 +11,13 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-func Collect(useRootDisk bool) ([]*DiskInfo, error) {
+func Collect(fsType string, useRootDisk bool) ([]*DiskInfo, error) {
 	var DiskCmd = "docker-disk"
 	args := []string{
 		"list",
+	}
+	if fsType != "" {
+		args = append(args, fsType)
 	}
 	if useRootDisk {
 		args = append(args, "rootdisk")

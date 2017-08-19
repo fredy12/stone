@@ -43,7 +43,7 @@ func assert(err error) {
 
 func New() *stonePlugin {
 	// TODO: add a task to auto check and load disks
-	diskInfos, err := tools.Collect(USE_ROOT_DISK)
+	diskInfos, err := tools.Collect(FS_TYPE, USE_ROOT_DISK)
 	if err != nil {
 		logrus.Panicf("error when do init stone plugin with collect disks: %v", err)
 	}
@@ -289,7 +289,7 @@ func (s *stonePlugin) info(resp http.ResponseWriter, req *http.Request) {
 	}
 	log.Println("Received info request")
 
-	diskInfos, err := tools.Collect(USE_ROOT_DISK)
+	diskInfos, err := tools.Collect(FS_TYPE, USE_ROOT_DISK)
 	if err != nil {
 		s := fmt.Sprintf("error do disk collect: %v", err)
 		r.Err = &s

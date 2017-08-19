@@ -129,7 +129,7 @@ type DiskInfo struct {
 	UsedPercent int64
 }
 
-func Collect(useRootDisk bool) ([]*DiskInfo, error) {
+func Collect(fsType string, useRootDisk bool) ([]*DiskInfo, error) {
 	deviceFlag := make(map[string]string)
 	deviceFlagType := map[string]string{
 		"0": SSD,
@@ -170,6 +170,12 @@ func Collect(useRootDisk bool) ([]*DiskInfo, error) {
 
 	diskInfos := make([]*DiskInfo, 0, len(infos))
 	for _, info := range infos {
+		if fsType != "" {
+			if info.Type != fsType {
+				continue
+			}
+		}
+
 		isBootDisk := false
 		if info.Mounted == bootPath {
 			if !useRootDisk {
