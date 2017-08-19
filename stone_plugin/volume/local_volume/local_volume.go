@@ -9,6 +9,7 @@ import (
 
 	"github.com/zanecloud/stone/stone_plugin/quota"
 	"github.com/zanecloud/stone/stone_plugin/tools"
+	"time"
 )
 
 const (
@@ -78,7 +79,7 @@ func New(driverName, volumeName string, size int64, ioClass int64, isExclusive b
 	}
 	defer func() {
 		if err != nil {
-			os.RemoveAll(filepath.Dir(v.VolumePath))
+			os.RemoveAll(v.VolumePath)
 		}
 	}()
 
@@ -199,5 +200,6 @@ func (v *LocalVolume) Unmount() error {
 }
 
 func (v *LocalVolume) Status() map[string]interface{} {
+	time.Sleep(time.Second)
 	return nil
 }

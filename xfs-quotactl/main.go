@@ -69,17 +69,18 @@ func Run() {
 	flag.Usage = usage
 	flag.Parse()
 
-	if len(os.Args) < 3 {
+	if len(os.Args) < 4 {
 		usage()
 		os.Exit(2)
 	}
 
 	log.SetPrefix(os.Args[0] + os.Args[1] + " | ")
 	switch os.Args[1] {
-	case "list":
+	case "get":
 		f1 := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 		f1.Usage = func() {
 			subCmdUsage("get", "", []map[string]string{
+				{"basePath": "base path to store quota"},
 				{"path": "path to show quota"},
 				{"verbose": "Optional show verbose logs"},
 			})
@@ -87,17 +88,23 @@ func Run() {
 
 		f1.Parse(os.Args[2:])
 		logrus.SetLevel(logrus.PanicLevel)
-		path := os.Args[2]
-		if len(os.Args) > 3 {
-			if os.Args[3] == "verbose" {
+		basePath := os.Args[2]
+		path := os.Args[3]
+		if len(os.Args) > 4 {
+			if os.Args[4] == "verbose" {
 				logrus.SetLevel(logrus.DebugLevel)
 			}
 		}
 
+		backingFsBlockDev, err := makeBackingFsDev(basePath)
+		assert(err)
 		projectId, err := getProjectID(path)
 		assert(err)
 
-		qc := XfsQuotaControl{}
+		qc := XfsQuotaControl{
+			backingFsBlockDev: backingFsBlockDev,
+			quotas:            map[string]uint32{},
+		}
 		qc.quotas[path] = projectId
 		quotas, err := qc.GetQuota(path)
 		assert(err)
