@@ -1,0 +1,23 @@
+[Unit]
+Description=Zanecloud Container Platform
+Documentation=http://www.zanecloud.com
+After=network.target
+
+[Service]
+Type=simple
+NotifyAccess=all
+EnvironmentFile=-/etc/zanecloud/stone.conf
+ExecStart=/opt/zanecloud/stone/bin/stone $STONE_OPTS
+
+
+
+#ExecReload=/bin/kill -s HUP $MAINPID
+LimitNOFILE=1048576
+LimitNPROC=1048576
+LimitCORE=infinity
+TimeoutStartSec=0
+Restart=on-abnormal
+MountFlags=slave
+
+[Install]
+WantedBy=multi-user.target
